@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTA 模拟报价 · 月度入住率反推</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7;
+    --border: rgba(11,11,11,.10);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --band: rgba(195,194,183,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835;
+      --border: rgba(255,255,255,.10);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --band: rgba(56,56,53,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835;
+    --border: rgba(255,255,255,.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --band: rgba(56,56,53,.5);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 20px 64px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: .2px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+  .sub { color: var(--ink2); font-size: 13px; margin: 0; }
+  .theme-btn {
+    flex: none; font: inherit; font-size: 12px; color: var(--ink2);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  .theme-btn:hover { color: var(--ink); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  .hero-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .hero-row .card { margin-bottom: 0; }
+  .hero { flex: 1 1 240px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; }
+  .tile { flex: 1 1 160px; display: flex; flex-direction: column; gap: 2px; }
+  .lbl { color: var(--ink2); font-size: 12px; }
+  .hero .val { font-size: 44px; font-weight: 600; line-height: 1.1; letter-spacing: -.5px; }
+  .tile .val { font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .dlt, .tile .sub2 { color: var(--ink2); font-size: 12px; }
+  .chart-sub { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--ink2); margin: 0 0 10px; }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
+  .chart-box { position: relative; outline: none; border-radius: 8px; }
+  .chart-box:focus-visible { outline: 2px solid var(--ink2); outline-offset: 4px; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5; display: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; min-width: 148px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  }
+  .tip .hd { color: var(--ink2); margin-bottom: 4px; }
+  .tip .row { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+  .tip .lk { width: 14px; height: 2px; border-radius: 1px; flex: none; }
+  .tip .nm { color: var(--ink2); flex: 1; }
+  .tip .vl { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .table-scroll { max-height: 480px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    color: var(--muted); font-weight: 500; text-align: right;
+    position: sticky; top: 0; background: var(--surface); z-index: 1;
+  }
+  thead th:first-child { text-align: left; }
+  tbody tr:last-child td { border-bottom: none; }
+  .notes { color: var(--muted); font-size: 12px; margin: 0; padding-left: 18px; }
+  .notes li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>OTA 模拟报价 · 月度入住率反推</h1>
+      <p class="sub" id="subtitle"></p>
+    </div>
+    <button class="theme-btn" id="themeBtn">深色模式</button>
+  </header>
+
+  <div class="hero-row">
+    <div class="card hero">
+      <span class="lbl">月均入住率（真实口径）</span>
+      <span class="val" id="heroVal"></span>
+      <span class="dlt" id="heroDlt"></span>
+    </div>
+    <div class="card tile" id="tileWorkday"></div>
+    <div class="card tile" id="tileWeekend"></div>
+    <div class="card tile" id="tileHoliday"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>入住率曲线（真实 vs 20:00 反推）</h2>
+    <p class="chart-sub">每天四个时点 00:00 / 08:00 / 14:00 / 20:00 抓取剩余房量，取 20:00 时点反推当日入住率；底纹为节假日区间</p>
+    <div class="legend" id="legendOcc"></div>
+    <div class="chart-box" id="boxOcc" tabindex="0" aria-label="入住率曲线图，焦点内按左右方向键移动光标查看每日数值"></div>
+  </div>
+
+  <div class="card">
+    <h2>日均价曲线（携程 vs 美团）</h2>
+    <p class="chart-sub">每日四个抓取时点价格均值；含日期系数（周末 1.18 / 节假日 1.60）与稀缺加价（已售占比越高价格越高）</p>
+    <div class="legend" id="legendPrice"></div>
+    <div class="chart-box" id="boxPrice" tabindex="0" aria-label="价格曲线图，焦点内按左右方向键移动光标查看每日数值"></div>
+  </div>
+
+  <div class="card">
+    <h2>明细表（每日抓取记录）</h2>
+    <p class="chart-sub">入住率单位 %；误差 = 真实入住率 − 反推入住率（20:00 后临时到店造成的低估）</p>
+    <div class="table-scroll"><table><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <ul class="notes" id="notes"></ul>
+
+</div>
+
+<script>
+'use strict';
+const DATA = /*__DATA__*/;
+const { days, monthStats, monthLabel, config } = DATA;
+
+// ---------- 格式化 ----------
+const pct = v => (v * 100).toFixed(1) + '%';
+const money = v => '¥' + v;
+const pp = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1);
+
+// ---------- 头部 / 指标 ----------
+document.getElementById('subtitle').textContent =
+  config.hotel + ' · ' + config.rooms + ' 间 · 基准价 ' + money(config.basePrice) +
+  ' · ' + monthLabel + ' · 抓取时点 ' + config.times.join(' / ');
+
+const overall = days.reduce((a, d) => {
+  a.t += d.trueOcc; a.i += d.inferredOcc; a.c += d.otaAvg.ctrip; a.m += d.otaAvg.meituan; return a;
+}, { t: 0, i: 0, c: 0, m: 0 });
+const nDays = days.length;
+document.getElementById('heroVal').textContent = pct(overall.t / nDays);
+document.getElementById('heroDlt').textContent =
+  '反推口径 ' + pct(overall.i / nDays) + ' · 反推低估 ' + pp((overall.t - overall.i) / nDays) + ' · 携程月均价 ' + money(Math.round(overall.c / nDays));
+
+function fillTile(el, s) {
+  const lbl = document.createElement('span');
+  lbl.className = 'lbl';
+  lbl.textContent = s.label + ' · ' + s.n + ' 天';
+  const val = document.createElement('span');
+  val.className = 'val';
+  val.textContent = pct(s.trueAvg);
+  const sub = document.createElement('span');
+  sub.className = 'sub2';
+  sub.textContent = '反推 ' + pct(s.inferredAvg) + ' · 携程均价 ' + money(s.ctripAvg);
+  el.append(lbl, val, sub);
+}
+fillTile(document.getElementById('tileWorkday'), monthStats.workday);
+fillTile(document.getElementById('tileWeekend'), monthStats.weekend);
+fillTile(document.getElementById('tileHoliday'), monthStats.holiday);
+
+// ---------- 图例 ----------
+function buildLegend(el, series) {
+  for (const s of series) {
+    const key = document.createElement('span');
+    key.className = 'key';
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = s.color;
+    const name = document.createElement('span');
+    name.textContent = s.name;
+    key.append(swatch, name);
+    el.appendChild(key);
+  }
+}
+
+// ---------- 折线图 ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(name, attrs) {
+  const node = document.createElementNS(SVGNS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}
+function text(x, y, s, fill, anchor, size) {
+  const t = el('text', { x, y, 'text-anchor': anchor || 'middle', 'font-size': size || 11 });
+  t.style.fill = fill;
+  t.textContent = s;
+  return t;
+}
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+function buildChart(box, opts) {
+  const W = 900, H = 240, mL = 46, mR = 64, mT = 14, mB = 28;
+  const plotW = W - mL - mR, plotH = H - mT - mB;
+  const n = opts.series[0].values.length;
+  const x = i => mL + (n <= 1 ? plotW / 2 : i / (n - 1) * plotW);
+  const [y0, y1] = opts.range;
+  const y = v => mT + (1 - (v - y0) / (y1 - y0)) * plotH;
+
+  const svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%' });
+  svg.style.display = 'block';
+
+  // 水平网格 + y 轴刻度
+  for (const t of opts.yTicks) {
+    const g = el('line', { x1: mL, x2: W - mR, y1: y(t), y2: y(t) });
+    g.style.stroke = 'var(--grid)';
+    g.setAttribute('stroke-width', 1);
+    svg.appendChild(g);
+    svg.appendChild(text(mL - 8, y(t) + 4, opts.yFmt(t), 'var(--muted)', 'end'));
+  }
+  // 基线
+  const base = el('line', { x1: mL, x2: W - mR, y1: y(y0), y2: y(y0) });
+  base.style.stroke = 'var(--axis)';
+  base.setAttribute('stroke-width', 1);
+  svg.appendChild(base);
+  // x 轴刻度
+  const step = Math.max(1, Math.ceil(n / 7));
+  for (let i = 0; i < n; i += step) svg.appendChild(text(x(i), H - 8, opts.labels[i], 'var(--muted)'));
+  if ((n - 1) % step > 2) svg.appendChild(text(x(n - 1), H - 8, opts.labels[n - 1], 'var(--muted)'));
+
+  // 节假日底纹
+  const half = n > 1 ? plotW / (n - 1) / 2 : plotW / 2;
+  for (const b of opts.bands) {
+    const rect = el('rect', {
+      x: x(b.from) - half, y: mT, width: x(b.to) - x(b.from) + half * 2, height: plotH,
+    });
+    rect.style.fill = 'var(--band)';
+    svg.appendChild(rect);
+    svg.appendChild(text(x(b.from) + 6, mT + 13, b.name, 'var(--muted)', 'start'));
+  }
+
+  // 系列折线 (2px) + 端点标记 (r=4 + 2px 表面色环) + 端点数值标签
+  const placedLabels = [];
+  for (const s of opts.series) {
+    const pts = s.values.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1)).join(' ');
+    const pl = el('polyline', { points: pts });
+    pl.style.stroke = s.color;
+    pl.setAttribute('stroke-width', 2);
+    pl.setAttribute('fill', 'none');
+    pl.setAttribute('stroke-linejoin', 'round');
+    pl.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(pl);
+
+    const last = s.values[n - 1];
+    const dot = el('circle', { cx: x(n - 1), cy: y(last), r: 4 });
+    dot.style.fill = s.color;
+    dot.style.stroke = 'var(--surface)';
+    dot.setAttribute('stroke-width', 2);
+    svg.appendChild(dot);
+
+    let ly = y(last) + 4;
+    while (placedLabels.some(p => Math.abs(ly - p) < 13)) ly += 15;
+    placedLabels.push(ly);
+    svg.appendChild(text(x(n - 1) + 10, ly, opts.vFmt(s, last), 'var(--ink2)', 'start'));
+  }
+
+  // 十字光标 + 统一 tooltip
+  const cross = el('line', { y1: mT, y2: mT + plotH });
+  cross.style.stroke = 'var(--axis)';
+  cross.setAttribute('stroke-width', 1);
+  cross.style.display = 'none';
+  svg.appendChild(cross);
+  const snapDots = opts.series.map(s => {
+    const d = el('circle', { r: 4 });
+    d.style.fill = s.color;
+    d.style.stroke = 'var(--surface)';
+    d.setAttribute('stroke-width', 2);
+    d.style.display = 'none';
+    svg.appendChild(d);
+    return d;
+  });
+
+  const tip = document.createElement('div');
+  tip.className = 'tip';
+  box.appendChild(tip);
+  let idx = -1;
+
+  function show(i) {
+    idx = clamp(i, 0, n - 1);
+    cross.style.display = 'block';
+    cross.setAttribute('x1', x(idx));
+    cross.setAttribute('x2', x(idx));
+    opts.series.forEach((s, k) => {
+      snapDots[k].style.display = 'block';
+      snapDots[k].setAttribute('cx', x(idx));
+      snapDots[k].setAttribute('cy', y(s.values[idx]));
+    });
+
+    tip.textContent = '';
+    const hd = document.createElement('div');
+    hd.className = 'hd';
+    hd.textContent = days[idx].date + ' · ' + days[idx].typeLabel;
+    tip.appendChild(hd);
+    for (const s of opts.series) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const lk = document.createElement('span');
+      lk.className = 'lk';
+      lk.style.background = s.color;
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = s.name;
+      const vl = document.createElement('span');
+      vl.className = 'vl';
+      vl.textContent = opts.vFmt(s, s.values[idx]);
+      row.append(lk, nm, vl);
+      tip.appendChild(row);
+    }
+    tip.style.display = 'block';
+    const scale = svg.getBoundingClientRect().width / W;
+    const tipW = tip.offsetWidth;
+    let left = x(idx) * scale + 14;
+    if (left + tipW > box.clientWidth - 4) left = x(idx) * scale - tipW - 14;
+    tip.style.left = Math.max(0, left) + 'px';
+    tip.style.top = '8px';
+  }
+  function hide() {
+    cross.style.display = 'none';
+    snapDots.forEach(d => { d.style.display = 'none'; });
+    tip.style.display = 'none';
+    idx = -1;
+  }
+
+  svg.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    show(Math.round((px - mL) / plotW * (n - 1)));
+  });
+  svg.addEventListener('pointerleave', hide);
+  box.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      show((idx === -1 ? 0 : idx) + (e.key === 'ArrowLeft' ? -1 : 1));
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      hide();
+    }
+  });
+
+  box.appendChild(svg);
+}
+
+// ---------- 数据组装 ----------
+const occSeries = [
+  { name: '真实入住率', color: 'var(--s1)', values: days.map(d => d.trueOcc * 100) },
+  { name: '反推入住率（20:00）', color: 'var(--s2)', values: days.map(d => d.inferredOcc * 100) },
+];
+const priceSeries = [
+  { name: '携程日均价', color: 'var(--s3)', values: days.map(d => d.otaAvg.ctrip) },
+  { name: '美团日均价', color: 'var(--s4)', values: days.map(d => d.otaAvg.meituan) },
+];
+function holidayBands() {
+  const runs = [];
+  days.forEach((d, i) => {
+    if (d.type === 'holiday') {
+      const last = runs[runs.length - 1];
+      if (last && last.to === i - 1) last.to = i;
+      else runs.push({ from: i, to: i, name: d.typeLabel });
+    }
+  });
+  return runs;
+}
+function priceTicks() {
+  const all = priceSeries.flatMap(s => s.values);
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const candidates = [25, 50, 100, 200, 250, 500, 1000];
+  const step = candidates.find(st => (hi - lo) / st <= 6) || 2000;
+  const ticks = [];
+  for (let v = Math.floor(lo / step) * step; v <= Math.ceil(hi / step) * step; v += step) ticks.push(v);
+  return { ticks, range: [ticks[0], ticks[ticks.length - 1]] };
+}
+
+// ---------- 渲染 ----------
+buildLegend(document.getElementById('legendOcc'), occSeries);
+buildLegend(document.getElementById('legendPrice'), priceSeries);
+
+buildChart(document.getElementById('boxOcc'), {
+  series: occSeries,
+  labels: days.map(d => d.label),
+  range: [0, 100],
+  yTicks: [0, 25, 50, 75, 100],
+  yFmt: v => v + '%',
+  vFmt: (s, v) => v.toFixed(1) + '%',
+  bands: holidayBands(),
+});
+
+const pticks = priceTicks();
+buildChart(document.getElementById('boxPrice'), {
+  series: priceSeries,
+  labels: days.map(d => d.label),
+  range: pticks.range,
+  yTicks: pticks.ticks,
+  yFmt: v => money(v),
+  vFmt: (s, v) => money(Math.round(v)),
+  bands: holidayBands(),
+});
+
+// ---------- 明细表 ----------
+const COLUMNS = [
+  ['日期', 'left'],
+  ['类型', 'left'],
+  ['携程剩 00:00', 'right'], ['携程剩 08:00', 'right'], ['携程剩 14:00', 'right'], ['携程剩 20:00', 'right'],
+  ['美团剩 20:00', 'right'],
+  ['反推入住率', 'right'], ['真实入住率', 'right'], ['误差(pp)', 'right'],
+  ['携程价 20:00', 'right'], ['美团价 20:00', 'right'],
+];
+const tbl = document.querySelector('table');
+const thead = tbl.querySelector('thead');
+const tbody = tbl.querySelector('tbody');
+const tr = document.createElement('tr');
+for (const [name] of COLUMNS) {
+  const th = document.createElement('th');
+  th.textContent = name;
+  tr.appendChild(th);
+}
+thead.appendChild(tr);
+for (const d of days) {
+  const row = document.createElement('tr');
+  const s20 = d.snapshots[3];
+  const cells = [
+    d.date, d.typeLabel,
+    d.snapshots[0].ctrip.rem, d.snapshots[1].ctrip.rem, d.snapshots[2].ctrip.rem, s20.ctrip.rem,
+    s20.meituan.rem,
+    (d.inferredOcc * 100).toFixed(1) + '%', (d.trueOcc * 100).toFixed(1) + '%',
+    (d.trueOcc - d.inferredOcc >= 0 ? '+' : '') + ((d.trueOcc - d.inferredOcc) * 100).toFixed(1),
+    money(s20.ctrip.price), money(s20.meituan.price),
+  ];
+  cells.forEach((v, i) => {
+    const td = document.createElement('td');
+    td.textContent = v;
+    td.style.textAlign = COLUMNS[i][1];
+    row.appendChild(td);
+  });
+  tbody.appendChild(row);
+}
+
+// ---------- 说明 ----------
+const NOTES = [
+  '反推公式：入住率 ≈（总房量 − 20:00 剩余房量）÷ 总房量。例：60 间房晚 8 点显示只剩 5 间 → 约 91.7%。',
+  '20:00 之后仍有少量临时到店（模型按当日预订量约 5%），因此反推入住率系统性略低于真实入住率，差距见明细表"误差"列。',
+  '剩余房量为模拟的 OTA 展示值，含 ±1 间的平台同步抖动；反推时取携程、美团两平台展示值的平均以平滑抖动。',
+  '价格模型：基准价 × 日期系数（工作日 1.00 / 周末 1.18 / 节假日 1.60）× 稀缺加价（1 + 0.45 × 已售占比）× 平台系数（美团 0.97）× ±2% 噪声。',
+  '节假日按内置 2026 年中国节假日表（简化）判定；本报告为方法论演示的模拟数据，非真实 OTA 数据。',
+];
+const notes = document.getElementById('notes');
+for (const t of NOTES) {
+  const li = document.createElement('li');
+  li.textContent = t;
+  notes.appendChild(li);
+}
+
+// ---------- 主题切换 ----------
+const btn = document.getElementById('themeBtn');
+const mq = matchMedia('(prefers-color-scheme: dark)');
+function currentTheme() {
+  return document.documentElement.dataset.theme || (mq.matches ? 'dark' : 'light');
+}
+function syncBtn() {
+  btn.textContent = currentTheme() === 'dark' ? '浅色模式' : '深色模式';
+}
+btn.addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('viz-theme', next); } catch (e) {}
+  syncBtn();
+});
+try {
+  const saved = localStorage.getItem('viz-theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+} catch (e) {}
+syncBtn();
+</script>
+</body>
+</html>

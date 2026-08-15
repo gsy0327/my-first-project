@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTA 模拟报价 · 月度入住率反推</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7;
+    --border: rgba(11,11,11,.10);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --band: rgba(195,194,183,.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835;
+      --border: rgba(255,255,255,.10);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --band: rgba(56,56,53,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835;
+    --border: rgba(255,255,255,.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --band: rgba(56,56,53,.5);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 20px 64px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: .2px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+  .sub { color: var(--ink2); font-size: 13px; margin: 0; }
+  .theme-btn {
+    flex: none; font: inherit; font-size: 12px; color: var(--ink2);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  .theme-btn:hover { color: var(--ink); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  .hero-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .hero-row .card { margin-bottom: 0; }
+  .hero { flex: 1 1 240px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; }
+  .tile { flex: 1 1 160px; display: flex; flex-direction: column; gap: 2px; }
+  .lbl { color: var(--ink2); font-size: 12px; }
+  .hero .val { font-size: 44px; font-weight: 600; line-height: 1.1; letter-spacing: -.5px; }
+  .tile .val { font-size: 26px; font-weight: 600; line-height: 1.2; }
+  .dlt, .tile .sub2 { color: var(--ink2); font-size: 12px; }
+  .chart-sub { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--ink2); margin: 0 0 10px; }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
+  .chart-box { position: relative; outline: none; border-radius: 8px; }
+  .chart-box:focus-visible { outline: 2px solid var(--ink2); outline-offset: 4px; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5; display: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; min-width: 148px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  }
+  .tip .hd { color: var(--ink2); margin-bottom: 4px; }
+  .tip .row { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+  .tip .lk { width: 14px; height: 2px; border-radius: 1px; flex: none; }
+  .tip .nm { color: var(--ink2); flex: 1; }
+  .tip .vl { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .table-scroll { max-height: 480px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    color: var(--muted); font-weight: 500; text-align: right;
+    position: sticky; top: 0; background: var(--surface); z-index: 1;
+  }
+  thead th:first-child { text-align: left; }
+  tbody tr:last-child td { border-bottom: none; }
+  .notes { color: var(--muted); font-size: 12px; margin: 0; padding-left: 18px; }
+  .notes li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>OTA 模拟报价 · 月度入住率反推</h1>
+      <p class="sub" id="subtitle"></p>
+    </div>
+    <button class="theme-btn" id="themeBtn">深色模式</button>
+  </header>
+
+  <div class="hero-row">
+    <div class="card hero">
+      <span class="lbl">月均入住率（真实口径）</span>
+      <span class="val" id="heroVal"></span>
+      <span class="dlt" id="heroDlt"></span>
+    </div>
+    <div class="card tile" id="tileWorkday"></div>
+    <div class="card tile" id="tileWeekend"></div>
+    <div class="card tile" id="tileHoliday"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>入住率曲线（真实 vs 20:00 反推）</h2>
+    <p class="chart-sub">每天四个时点 00:00 / 08:00 / 14:00 / 20:00 抓取剩余房量，取 20:00 时点反推当日入住率；底纹为节假日区间</p>
+    <div class="legend" id="legendOcc"></div>
+    <div class="chart-box" id="boxOcc" tabindex="0" aria-label="入住率曲线图，焦点内按左右方向键移动光标查看每日数值"></div>
+  </div>
+
+  <div class="card">
+    <h2>日均价曲线（携程 vs 美团）</h2>
+    <p class="chart-sub">每日四个抓取时点价格均值；含日期系数（周末 1.18 / 节假日 1.60）与稀缺加价（已售占比越高价格越高）</p>
+    <div class="legend" id="legendPrice"></div>
+    <div class="chart-box" id="boxPrice" tabindex="0" aria-label="价格曲线图，焦点内按左右方向键移动光标查看每日数值"></div>
+  </div>
+
+  <div class="card">
+    <h2>明细表（每日抓取记录）</h2>
+    <p class="chart-sub">入住率单位 %；误差 = 真实入住率 − 反推入住率（20:00 后临时到店造成的低估）</p>
+    <div class="table-scroll"><table><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <ul class="notes" id="notes"></ul>
+
+</div>
+
+<script>
+'use strict';
+const DATA = {"monthLabel":"2026年10月","config":{"hotel":"示例酒店","rooms":60,"basePrice":388,"seed":42,"times":["00:00","08:00","14:00","20:00"]},"days":[{"date":"2026-10-01","label":"10/1","type":"holiday","typeLabel":"国庆","demand":60,"trueOcc":1,"inferredOcc":0.95,"snapshots":[{"t":"00:00","rem":49,"ctrip":{"rem":48,"price":678},"meituan":{"rem":50,"price":662}},{"t":"08:00","rem":47,"ctrip":{"rem":48,"price":673},"meituan":{"rem":48,"price":661}},{"t":"14:00","rem":30,"ctrip":{"rem":29,"price":747},"meituan":{"rem":31,"price":744}},{"t":"20:00","rem":3,"ctrip":{"rem":3,"price":878},"meituan":{"rem":3,"price":843}}],"otaAvg":{"ctrip":744,"meituan":728}},{"date":"2026-10-02","label":"10/2","type":"holiday","typeLabel":"国庆","demand":57,"trueOcc":0.95,"inferredOcc":0.9166666666666666,"snapshots":[{"t":"00:00","rem":49,"ctrip":{"rem":50,"price":660},"meituan":{"rem":50,"price":650}},{"t":"08:00","rem":49,"ctrip":{"rem":49,"price":661},"meituan":{"rem":50,"price":640}},{"t":"14:00","rem":32,"ctrip":{"rem":32,"price":743},"meituan":{"rem":33,"price":730}},{"t":"20:00","rem":5,"ctrip":{"rem":4,"price":893},"meituan":{"rem":6,"price":856}}],"otaAvg":{"ctrip":739,"meituan":719}},{"date":"2026-10-03","label":"10/3","type":"holiday","typeLabel":"国庆","demand":55,"trueOcc":0.9166666666666666,"inferredOcc":0.9166666666666666,"snapshots":[{"t":"00:00","rem":47,"ctrip":{"rem":48,"price":684},"meituan":{"rem":48,"price":657}},{"t":"08:00","rem":44,"ctrip":{"rem":44,"price":682},"meituan":{"rem":45,"price":682}},{"t":"14:00","rem":31,"ctrip":{"rem":31,"price":747},"meituan":{"rem":32,"price":733}},{"t":"20:00","rem":5,"ctrip":{"rem":4,"price":862},"meituan":{"rem":6,"price":848}}],"otaAvg":{"ctrip":744,"meituan":730}},{"date":"2026-10-04","label":"10/4","type":"holiday","typeLabel":"国庆","demand":56,"trueOcc":0.9333333333333333,"inferredOcc":0.875,"snapshots":[{"t":"00:00","rem":50,"ctrip":{"rem":49,"price":656},"meituan":{"rem":51,"price":635}},{"t":"08:00","rem":50,"ctrip":{"rem":50,"price":677},"meituan":{"rem":51,"price":654}},{"t":"14:00","rem":39,"ctrip":{"rem":39,"price":728},"meituan":{"rem":39,"price":709}},{"t":"20:00","rem":8,"ctrip":{"rem":8,"price":854},"meituan":{"rem":7,"price":833}}],"otaAvg":{"ctrip":729,"meituan":708}},{"date":"2026-10-05","label":"10/5","type":"holiday","typeLabel":"国庆","demand":57,"trueOcc":0.95,"inferredOcc":0.8666666666666667,"snapshots":[{"t":"00:00","rem":54,"ctrip":{"rem":54,"price":650},"meituan":{"rem":55,"price":631}},{"t":"08:00","rem":51,"ctrip":{"rem":52,"price":661},"meituan":{"rem":52,"price":642}},{"t":"14:00","rem":37,"ctrip":{"rem":37,"price":733},"meituan":{"rem":38,"price":703}},{"t":"20:00","rem":8,"ctrip":{"rem":7,"price":846},"meituan":{"rem":9,"price":833}}],"otaAvg":{"ctrip":723,"meituan":702}},{"date":"2026-10-06","label":"10/6","type":"holiday","typeLabel":"国庆","demand":58,"trueOcc":0.9666666666666667,"inferredOcc":0.9,"snapshots":[{"t":"00:00","rem":46,"ctrip":{"rem":47,"price":699},"meituan":{"rem":47,"price":676}},{"t":"08:00","rem":42,"ctrip":{"rem":41,"price":710},"meituan":{"rem":43,"price":692}},{"t":"14:00","rem":25,"ctrip":{"rem":24,"price":768},"meituan":{"rem":26,"price":773}},{"t":"20:00","rem":6,"ctrip":{"rem":7,"price":863},"meituan":{"rem":5,"price":830}}],"otaAvg":{"ctrip":760,"meituan":743}},{"date":"2026-10-07","label":"10/7","type":"holiday","typeLabel":"国庆","demand":57,"trueOcc":0.95,"inferredOcc":0.9,"snapshots":[{"t":"00:00","rem":52,"ctrip":{"rem":52,"price":663},"meituan":{"rem":52,"price":630}},{"t":"08:00","rem":51,"ctrip":{"rem":51,"price":670},"meituan":{"rem":52,"price":655}},{"t":"14:00","rem":28,"ctrip":{"rem":29,"price":782},"meituan":{"rem":29,"price":747}},{"t":"20:00","rem":6,"ctrip":{"rem":6,"price":885},"meituan":{"rem":6,"price":831}}],"otaAvg":{"ctrip":750,"meituan":716}},{"date":"2026-10-08","label":"10/8","type":"holiday","typeLabel":"国庆","demand":55,"trueOcc":0.9166666666666666,"inferredOcc":0.875,"snapshots":[{"t":"00:00","rem":50,"ctrip":{"rem":50,"price":674},"meituan":{"rem":51,"price":647}},{"t":"08:00","rem":44,"ctrip":{"rem":45,"price":707},"meituan":{"rem":45,"price":684}},{"t":"14:00","rem":30,"ctrip":{"rem":30,"price":751},"meituan":{"rem":29,"price":738}},{"t":"20:00","rem":7,"ctrip":{"rem":7,"price":860},"meituan":{"rem":8,"price":857}}],"otaAvg":{"ctrip":748,"meituan":732}},{"date":"2026-10-09","label":"10/9","type":"workday","typeLabel":"工作日","demand":26,"trueOcc":0.43333333333333335,"inferredOcc":0.44166666666666665,"snapshots":[{"t":"00:00","rem":53,"ctrip":{"rem":53,"price":408},"meituan":{"rem":54,"price":397}},{"t":"08:00","rem":50,"ctrip":{"rem":49,"price":424},"meituan":{"rem":51,"price":407}},{"t":"14:00","rem":44,"ctrip":{"rem":43,"price":428},"meituan":{"rem":45,"price":430}},{"t":"20:00","rem":34,"ctrip":{"rem":34,"price":459},"meituan":{"rem":33,"price":449}}],"otaAvg":{"ctrip":430,"meituan":421}},{"date":"2026-10-10","label":"10/10","type":"weekend","typeLabel":"周末","demand":52,"trueOcc":0.8666666666666667,"inferredOcc":0.85,"snapshots":[{"t":"00:00","rem":51,"ctrip":{"rem":51,"price":482},"meituan":{"rem":50,"price":465}},{"t":"08:00","rem":49,"ctrip":{"rem":50,"price":487},"meituan":{"rem":48,"price":473}},{"t":"14:00","rem":38,"ctrip":{"rem":38,"price":533},"meituan":{"rem":38,"price":509}},{"t":"20:00","rem":9,"ctrip":{"rem":9,"price":645},"meituan":{"rem":9,"price":613}}],"otaAvg":{"ctrip":537,"meituan":515}},{"date":"2026-10-11","label":"10/11","type":"weekend","typeLabel":"周末","demand":48,"trueOcc":0.8,"inferredOcc":0.6916666666666667,"snapshots":[{"t":"00:00","rem":49,"ctrip":{"rem":50,"price":494},"meituan":{"rem":50,"price":482}},{"t":"08:00","rem":49,"ctrip":{"rem":49,"price":487},"meituan":{"rem":49,"price":473}},{"t":"14:00","rem":37,"ctrip":{"rem":38,"price":543},"meituan":{"rem":38,"price":521}},{"t":"20:00","rem":18,"ctrip":{"rem":18,"price":597},"meituan":{"rem":19,"price":590}}],"otaAvg":{"ctrip":530,"meituan":517}},{"date":"2026-10-12","label":"10/12","type":"workday","typeLabel":"工作日","demand":37,"trueOcc":0.6166666666666667,"inferredOcc":0.6,"snapshots":[{"t":"00:00","rem":51,"ctrip":{"rem":51,"price":421},"meituan":{"rem":50,"price":407}},{"t":"08:00","rem":50,"ctrip":{"rem":51,"price":421},"meituan":{"rem":49,"price":410}},{"t":"14:00","rem":43,"ctrip":{"rem":44,"price":438},"meituan":{"rem":44,"price":421}},{"t":"20:00","rem":24,"ctrip":{"rem":23,"price":499},"meituan":{"rem":25,"price":469}}],"otaAvg":{"ctrip":445,"meituan":427}},{"date":"2026-10-13","label":"10/13","type":"workday","typeLabel":"工作日","demand":32,"trueOcc":0.5333333333333333,"inferredOcc":0.5333333333333333,"snapshots":[{"t":"00:00","rem":50,"ctrip":{"rem":50,"price":420},"meituan":{"rem":51,"price":399}},{"t":"08:00","rem":49,"ctrip":{"rem":49,"price":425},"meituan":{"rem":48,"price":412}},{"t":"14:00","rem":44,"ctrip":{"rem":43,"price":433},"meituan":{"rem":44,"price":423}},{"t":"20:00","rem":28,"ctrip":{"rem":28,"price":473},"meituan":{"rem":28,"price":465}}],"otaAvg":{"ctrip":438,"meituan":425}},{"date":"2026-10-14","label":"10/14","type":"workday","typeLabel":"工作日","demand":32,"trueOcc":0.5333333333333333,"inferredOcc":0.44166666666666665,"snapshots":[{"t":"00:00","rem":51,"ctrip":{"rem":50,"price":415},"meituan":{"rem":52,"price":399}},{"t":"08:00","rem":50,"ctrip":{"rem":50,"price":413},"meituan":{"rem":50,"price":399}},{"t":"14:00","rem":45,"ctrip":{"rem":45,"price":437},"meituan":{"rem":46,"price":422}},{"t":"20:00","rem":33,"ctrip":{"rem":33,"price":469},"meituan":{"rem":34,"price":454}}],"otaAvg":{"ctrip":434,"meituan":419}},{"date":"2026-10-15","label":"10/15","type":"workday","typeLabel":"工作日","demand":41,"trueOcc":0.6833333333333333,"inferredOcc":0.6166666666666667,"snapshots":[{"t":"00:00","rem":53,"ctrip":{"rem":53,"price":407},"meituan":{"rem":52,"price":391}},{"t":"08:00","rem":49,"ctrip":{"rem":49,"price":413},"meituan":{"rem":50,"price":408}},{"t":"14:00","rem":39,"ctrip":{"rem":38,"price":452},"meituan":{"rem":39,"price":429}},{"t":"20:00","rem":23,"ctrip":{"rem":24,"price":488},"meituan":{"rem":22,"price":474}}],"otaAvg":{"ctrip":440,"meituan":426}},{"date":"2026-10-16","label":"10/16","type":"workday","typeLabel":"工作日","demand":32,"trueOcc":0.5333333333333333,"inferredOcc":0.5333333333333333,"snapshots":[{"t":"00:00","rem":53,"ctrip":{"rem":54,"price":400},"meituan":{"rem":52,"price":400}},{"t":"08:00","rem":53,"ctrip":{"rem":52,"price":415},"meituan":{"rem":54,"price":394}},{"t":"14:00","rem":46,"ctrip":{"rem":45,"price":437},"meituan":{"rem":46,"price":424}},{"t":"20:00","rem":29,"ctrip":{"rem":28,"price":475},"meituan":{"rem":28,"price":466}}],"otaAvg":{"ctrip":432,"meituan":421}},{"date":"2026-10-17","label":"10/17","type":"weekend","typeLabel":"周末","demand":50,"trueOcc":0.8333333333333334,"inferredOcc":0.8,"snapshots":[{"t":"00:00","rem":47,"ctrip":{"rem":48,"price":510},"meituan":{"rem":47,"price":490}},{"t":"08:00","rem":44,"ctrip":{"rem":43,"price":514},"meituan":{"rem":43,"price":491}},{"t":"14:00","rem":33,"ctrip":{"rem":34,"price":547},"meituan":{"rem":34,"price":536}},{"t":"20:00","rem":12,"ctrip":{"rem":13,"price":627},"meituan":{"rem":11,"price":614}}],"otaAvg":{"ctrip":550,"meituan":533}},{"date":"2026-10-18","label":"10/18","type":"weekend","typeLabel":"周末","demand":42,"trueOcc":0.7,"inferredOcc":0.675,"snapshots":[{"t":"00:00","rem":47,"ctrip":{"rem":48,"price":507},"meituan":{"rem":48,"price":484}},{"t":"08:00","rem":47,"ctrip":{"rem":47,"price":507},"meituan":{"rem":48,"price":494}},{"t":"14:00","rem":34,"ctrip":{"rem":34,"price":551},"meituan":{"rem":34,"price":541}},{"t":"20:00","rem":19,"ctrip":{"rem":19,"price":608},"meituan":{"rem":20,"price":592}}],"otaAvg":{"ctrip":543,"meituan":528}},{"date":"2026-10-19","label":"10/19","type":"workday","typeLabel":"工作日","demand":37,"trueOcc":0.6166666666666667,"inferredOcc":0.5916666666666667,"snapshots":[{"t":"00:00","rem":54,"ctrip":{"rem":54,"price":405},"meituan":{"rem":55,"price":394}},{"t":"08:00","rem":51,"ctrip":{"rem":52,"price":419},"meituan":{"rem":52,"price":395}},{"t":"14:00","rem":41,"ctrip":{"rem":40,"price":448},"meituan":{"rem":42,"price":438}},{"t":"20:00","rem":25,"ctrip":{"rem":25,"price":483},"meituan":{"rem":24,"price":481}}],"otaAvg":{"ctrip":439,"meituan":427}},{"date":"2026-10-20","label":"10/20","type":"workday","typeLabel":"工作日","demand":36,"trueOcc":0.6,"inferredOcc":0.5833333333333334,"snapshots":[{"t":"00:00","rem":55,"ctrip":{"rem":54,"price":398},"meituan":{"rem":56,"price":388}},{"t":"08:00","rem":55,"ctrip":{"rem":55,"price":395},"meituan":{"rem":56,"price":387}},{"t":"14:00","rem":43,"ctrip":{"rem":43,"price":432},"meituan":{"rem":43,"price":421}},{"t":"20:00","rem":25,"ctrip":{"rem":25,"price":493},"meituan":{"rem":25,"price":478}}],"otaAvg":{"ctrip":430,"meituan":419}},{"date":"2026-10-21","label":"10/21","type":"workday","typeLabel":"工作日","demand":35,"trueOcc":0.5833333333333334,"inferredOcc":0.575,"snapshots":[{"t":"00:00","rem":47,"ctrip":{"rem":48,"price":431},"meituan":{"rem":46,"price":410}},{"t":"08:00","rem":46,"ctrip":{"rem":47,"price":424},"meituan":{"rem":47,"price":423}},{"t":"14:00","rem":41,"ctrip":{"rem":40,"price":452},"meituan":{"rem":42,"price":425}},{"t":"20:00","rem":26,"ctrip":{"rem":26,"price":481},"meituan":{"rem":25,"price":464}}],"otaAvg":{"ctrip":447,"meituan":431}},{"date":"2026-10-22","label":"10/22","type":"workday","typeLabel":"工作日","demand":29,"trueOcc":0.48333333333333334,"inferredOcc":0.45,"snapshots":[{"t":"00:00","rem":56,"ctrip":{"rem":56,"price":397},"meituan":{"rem":57,"price":388}},{"t":"08:00","rem":54,"ctrip":{"rem":54,"price":411},"meituan":{"rem":55,"price":390}},{"t":"14:00","rem":48,"ctrip":{"rem":49,"price":425},"meituan":{"rem":49,"price":412}},{"t":"20:00","rem":33,"ctrip":{"rem":33,"price":457},"meituan":{"rem":33,"price":448}}],"otaAvg":{"ctrip":423,"meituan":410}},{"date":"2026-10-23","label":"10/23","type":"workday","typeLabel":"工作日","demand":33,"trueOcc":0.55,"inferredOcc":0.5333333333333333,"snapshots":[{"t":"00:00","rem":54,"ctrip":{"rem":54,"price":410},"meituan":{"rem":55,"price":394}},{"t":"08:00","rem":54,"ctrip":{"rem":55,"price":408},"meituan":{"rem":54,"price":392}},{"t":"14:00","rem":48,"ctrip":{"rem":48,"price":428},"meituan":{"rem":49,"price":412}},{"t":"20:00","rem":28,"ctrip":{"rem":28,"price":485},"meituan":{"rem":28,"price":465}}],"otaAvg":{"ctrip":433,"meituan":416}},{"date":"2026-10-24","label":"10/24","type":"weekend","typeLabel":"周末","demand":49,"trueOcc":0.8166666666666667,"inferredOcc":0.7166666666666667,"snapshots":[{"t":"00:00","rem":54,"ctrip":{"rem":55,"price":477},"meituan":{"rem":54,"price":470}},{"t":"08:00","rem":51,"ctrip":{"rem":52,"price":482},"meituan":{"rem":50,"price":473}},{"t":"14:00","rem":41,"ctrip":{"rem":42,"price":523},"meituan":{"rem":42,"price":504}},{"t":"20:00","rem":17,"ctrip":{"rem":17,"price":602},"meituan":{"rem":17,"price":594}}],"otaAvg":{"ctrip":521,"meituan":510}},{"date":"2026-10-25","label":"10/25","type":"weekend","typeLabel":"周末","demand":46,"trueOcc":0.7666666666666667,"inferredOcc":0.7333333333333333,"snapshots":[{"t":"00:00","rem":51,"ctrip":{"rem":52,"price":482},"meituan":{"rem":52,"price":469}},{"t":"08:00","rem":48,"ctrip":{"rem":47,"price":498},"meituan":{"rem":49,"price":483}},{"t":"14:00","rem":36,"ctrip":{"rem":36,"price":531},"meituan":{"rem":37,"price":519}},{"t":"20:00","rem":16,"ctrip":{"rem":15,"price":619},"meituan":{"rem":17,"price":584}}],"otaAvg":{"ctrip":533,"meituan":514}},{"date":"2026-10-26","label":"10/26","type":"workday","typeLabel":"工作日","demand":34,"trueOcc":0.5666666666666667,"inferredOcc":0.55,"snapshots":[{"t":"00:00","rem":54,"ctrip":{"rem":55,"price":399},"meituan":{"rem":54,"price":392}},{"t":"08:00","rem":53,"ctrip":{"rem":52,"price":416},"meituan":{"rem":52,"price":396}},{"t":"14:00","rem":47,"ctrip":{"rem":48,"price":423},"meituan":{"rem":48,"price":416}},{"t":"20:00","rem":27,"ctrip":{"rem":27,"price":476},"meituan":{"rem":27,"price":478}}],"otaAvg":{"ctrip":429,"meituan":421}},{"date":"2026-10-27","label":"10/27","type":"workday","typeLabel":"工作日","demand":41,"trueOcc":0.6833333333333333,"inferredOcc":0.6583333333333333,"snapshots":[{"t":"00:00","rem":54,"ctrip":{"rem":54,"price":406},"meituan":{"rem":55,"price":400}},{"t":"08:00","rem":51,"ctrip":{"rem":51,"price":419},"meituan":{"rem":51,"price":399}},{"t":"14:00","rem":40,"ctrip":{"rem":40,"price":446},"meituan":{"rem":39,"price":435}},{"t":"20:00","rem":20,"ctrip":{"rem":20,"price":513},"meituan":{"rem":21,"price":481}}],"otaAvg":{"ctrip":446,"meituan":429}},{"date":"2026-10-28","label":"10/28","type":"workday","typeLabel":"工作日","demand":31,"trueOcc":0.5166666666666667,"inferredOcc":0.5,"snapshots":[{"t":"00:00","rem":52,"ctrip":{"rem":52,"price":409},"meituan":{"rem":52,"price":406}},{"t":"08:00","rem":50,"ctrip":{"rem":50,"price":421},"meituan":{"rem":49,"price":402}},{"t":"14:00","rem":44,"ctrip":{"rem":44,"price":426},"meituan":{"rem":43,"price":423}},{"t":"20:00","rem":31,"ctrip":{"rem":30,"price":467},"meituan":{"rem":30,"price":461}}],"otaAvg":{"ctrip":431,"meituan":423}},{"date":"2026-10-29","label":"10/29","type":"workday","typeLabel":"工作日","demand":28,"trueOcc":0.4666666666666667,"inferredOcc":0.4666666666666667,"snapshots":[{"t":"00:00","rem":55,"ctrip":{"rem":55,"price":398},"meituan":{"rem":55,"price":397}},{"t":"08:00","rem":54,"ctrip":{"rem":54,"price":405},"meituan":{"rem":53,"price":394}},{"t":"14:00","rem":44,"ctrip":{"rem":45,"price":427},"meituan":{"rem":44,"price":414}},{"t":"20:00","rem":33,"ctrip":{"rem":32,"price":472},"meituan":{"rem":32,"price":456}}],"otaAvg":{"ctrip":426,"meituan":415}},{"date":"2026-10-30","label":"10/30","type":"workday","typeLabel":"工作日","demand":29,"trueOcc":0.48333333333333334,"inferredOcc":0.43333333333333335,"snapshots":[{"t":"00:00","rem":55,"ctrip":{"rem":54,"price":397},"meituan":{"rem":56,"price":394}},{"t":"08:00","rem":54,"ctrip":{"rem":53,"price":403},"meituan":{"rem":55,"price":390}},{"t":"14:00","rem":48,"ctrip":{"rem":49,"price":429},"meituan":{"rem":48,"price":409}},{"t":"20:00","rem":34,"ctrip":{"rem":33,"price":461},"meituan":{"rem":35,"price":448}}],"otaAvg":{"ctrip":423,"meituan":410}},{"date":"2026-10-31","label":"10/31","type":"weekend","typeLabel":"周末","demand":46,"trueOcc":0.7666666666666667,"inferredOcc":0.7083333333333334,"snapshots":[{"t":"00:00","rem":51,"ctrip":{"rem":52,"price":481},"meituan":{"rem":52,"price":483}},{"t":"08:00","rem":46,"ctrip":{"rem":46,"price":513},"meituan":{"rem":46,"price":487}},{"t":"14:00","rem":36,"ctrip":{"rem":37,"price":533},"meituan":{"rem":36,"price":516}},{"t":"20:00","rem":18,"ctrip":{"rem":18,"price":605},"meituan":{"rem":17,"price":595}}],"otaAvg":{"ctrip":533,"meituan":520}}],"monthStats":{"workday":{"n":16,"trueAvg":0.5552083333333332,"inferredAvg":0.5317708333333333,"ctripAvg":434,"meituanAvg":421,"label":"工作日"},"weekend":{"n":7,"trueAvg":0.7928571428571428,"inferredAvg":0.7392857142857142,"ctripAvg":535,"meituanAvg":520,"label":"周末"},"holiday":{"n":8,"trueAvg":0.9479166666666667,"inferredAvg":0.9000000000000001,"ctripAvg":742,"meituanAvg":722,"label":"节假日"}}};
+const { days, monthStats, monthLabel, config } = DATA;
+
+// ---------- 格式化 ----------
+const pct = v => (v * 100).toFixed(1) + '%';
+const money = v => '¥' + v;
+const pp = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1);
+
+// ---------- 头部 / 指标 ----------
+document.getElementById('subtitle').textContent =
+  config.hotel + ' · ' + config.rooms + ' 间 · 基准价 ' + money(config.basePrice) +
+  ' · ' + monthLabel + ' · 抓取时点 ' + config.times.join(' / ');
+
+const overall = days.reduce((a, d) => {
+  a.t += d.trueOcc; a.i += d.inferredOcc; a.c += d.otaAvg.ctrip; a.m += d.otaAvg.meituan; return a;
+}, { t: 0, i: 0, c: 0, m: 0 });
+const nDays = days.length;
+document.getElementById('heroVal').textContent = pct(overall.t / nDays);
+document.getElementById('heroDlt').textContent =
+  '反推口径 ' + pct(overall.i / nDays) + ' · 反推低估 ' + pp((overall.t - overall.i) / nDays) + ' · 携程月均价 ' + money(Math.round(overall.c / nDays));
+
+function fillTile(el, s) {
+  const lbl = document.createElement('span');
+  lbl.className = 'lbl';
+  lbl.textContent = s.label + ' · ' + s.n + ' 天';
+  const val = document.createElement('span');
+  val.className = 'val';
+  val.textContent = pct(s.trueAvg);
+  const sub = document.createElement('span');
+  sub.className = 'sub2';
+  sub.textContent = '反推 ' + pct(s.inferredAvg) + ' · 携程均价 ' + money(s.ctripAvg);
+  el.append(lbl, val, sub);
+}
+fillTile(document.getElementById('tileWorkday'), monthStats.workday);
+fillTile(document.getElementById('tileWeekend'), monthStats.weekend);
+fillTile(document.getElementById('tileHoliday'), monthStats.holiday);
+
+// ---------- 图例 ----------
+function buildLegend(el, series) {
+  for (const s of series) {
+    const key = document.createElement('span');
+    key.className = 'key';
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = s.color;
+    const name = document.createElement('span');
+    name.textContent = s.name;
+    key.append(swatch, name);
+    el.appendChild(key);
+  }
+}
+
+// ---------- 折线图 ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(name, attrs) {
+  const node = document.createElementNS(SVGNS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}
+function text(x, y, s, fill, anchor, size) {
+  const t = el('text', { x, y, 'text-anchor': anchor || 'middle', 'font-size': size || 11 });
+  t.style.fill = fill;
+  t.textContent = s;
+  return t;
+}
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+function buildChart(box, opts) {
+  const W = 900, H = 240, mL = 46, mR = 64, mT = 14, mB = 28;
+  const plotW = W - mL - mR, plotH = H - mT - mB;
+  const n = opts.series[0].values.length;
+  const x = i => mL + (n <= 1 ? plotW / 2 : i / (n - 1) * plotW);
+  const [y0, y1] = opts.range;
+  const y = v => mT + (1 - (v - y0) / (y1 - y0)) * plotH;
+
+  const svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%' });
+  svg.style.display = 'block';
+
+  // 水平网格 + y 轴刻度
+  for (const t of opts.yTicks) {
+    const g = el('line', { x1: mL, x2: W - mR, y1: y(t), y2: y(t) });
+    g.style.stroke = 'var(--grid)';
+    g.setAttribute('stroke-width', 1);
+    svg.appendChild(g);
+    svg.appendChild(text(mL - 8, y(t) + 4, opts.yFmt(t), 'var(--muted)', 'end'));
+  }
+  // 基线
+  const base = el('line', { x1: mL, x2: W - mR, y1: y(y0), y2: y(y0) });
+  base.style.stroke = 'var(--axis)';
+  base.setAttribute('stroke-width', 1);
+  svg.appendChild(base);
+  // x 轴刻度
+  const step = Math.max(1, Math.ceil(n / 7));
+  for (let i = 0; i < n; i += step) svg.appendChild(text(x(i), H - 8, opts.labels[i], 'var(--muted)'));
+  if ((n - 1) % step > 2) svg.appendChild(text(x(n - 1), H - 8, opts.labels[n - 1], 'var(--muted)'));
+
+  // 节假日底纹
+  const half = n > 1 ? plotW / (n - 1) / 2 : plotW / 2;
+  for (const b of opts.bands) {
+    const rect = el('rect', {
+      x: x(b.from) - half, y: mT, width: x(b.to) - x(b.from) + half * 2, height: plotH,
+    });
+    rect.style.fill = 'var(--band)';
+    svg.appendChild(rect);
+    svg.appendChild(text(x(b.from) + 6, mT + 13, b.name, 'var(--muted)', 'start'));
+  }
+
+  // 系列折线 (2px) + 端点标记 (r=4 + 2px 表面色环) + 端点数值标签
+  const placedLabels = [];
+  for (const s of opts.series) {
+    const pts = s.values.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1)).join(' ');
+    const pl = el('polyline', { points: pts });
+    pl.style.stroke = s.color;
+    pl.setAttribute('stroke-width', 2);
+    pl.setAttribute('fill', 'none');
+    pl.setAttribute('stroke-linejoin', 'round');
+    pl.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(pl);
+
+    const last = s.values[n - 1];
+    const dot = el('circle', { cx: x(n - 1), cy: y(last), r: 4 });
+    dot.style.fill = s.color;
+    dot.style.stroke = 'var(--surface)';
+    dot.setAttribute('stroke-width', 2);
+    svg.appendChild(dot);
+
+    let ly = y(last) + 4;
+    while (placedLabels.some(p => Math.abs(ly - p) < 13)) ly += 15;
+    placedLabels.push(ly);
+    svg.appendChild(text(x(n - 1) + 10, ly, opts.vFmt(s, last), 'var(--ink2)', 'start'));
+  }
+
+  // 十字光标 + 统一 tooltip
+  const cross = el('line', { y1: mT, y2: mT + plotH });
+  cross.style.stroke = 'var(--axis)';
+  cross.setAttribute('stroke-width', 1);
+  cross.style.display = 'none';
+  svg.appendChild(cross);
+  const snapDots = opts.series.map(s => {
+    const d = el('circle', { r: 4 });
+    d.style.fill = s.color;
+    d.style.stroke = 'var(--surface)';
+    d.setAttribute('stroke-width', 2);
+    d.style.display = 'none';
+    svg.appendChild(d);
+    return d;
+  });
+
+  const tip = document.createElement('div');
+  tip.className = 'tip';
+  box.appendChild(tip);
+  let idx = -1;
+
+  function show(i) {
+    idx = clamp(i, 0, n - 1);
+    cross.style.display = 'block';
+    cross.setAttribute('x1', x(idx));
+    cross.setAttribute('x2', x(idx));
+    opts.series.forEach((s, k) => {
+      snapDots[k].style.display = 'block';
+      snapDots[k].setAttribute('cx', x(idx));
+      snapDots[k].setAttribute('cy', y(s.values[idx]));
+    });
+
+    tip.textContent = '';
+    const hd = document.createElement('div');
+    hd.className = 'hd';
+    hd.textContent = days[idx].date + ' · ' + days[idx].typeLabel;
+    tip.appendChild(hd);
+    for (const s of opts.series) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const lk = document.createElement('span');
+      lk.className = 'lk';
+      lk.style.background = s.color;
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = s.name;
+      const vl = document.createElement('span');
+      vl.className = 'vl';
+      vl.textContent = opts.vFmt(s, s.values[idx]);
+      row.append(lk, nm, vl);
+      tip.appendChild(row);
+    }
+    tip.style.display = 'block';
+    const scale = svg.getBoundingClientRect().width / W;
+    const tipW = tip.offsetWidth;
+    let left = x(idx) * scale + 14;
+    if (left + tipW > box.clientWidth - 4) left = x(idx) * scale - tipW - 14;
+    tip.style.left = Math.max(0, left) + 'px';
+    tip.style.top = '8px';
+  }
+  function hide() {
+    cross.style.display = 'none';
+    snapDots.forEach(d => { d.style.display = 'none'; });
+    tip.style.display = 'none';
+    idx = -1;
+  }
+
+  svg.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    show(Math.round((px - mL) / plotW * (n - 1)));
+  });
+  svg.addEventListener('pointerleave', hide);
+  box.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      show((idx === -1 ? 0 : idx) + (e.key === 'ArrowLeft' ? -1 : 1));
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      hide();
+    }
+  });
+
+  box.appendChild(svg);
+}
+
+// ---------- 数据组装 ----------
+const occSeries = [
+  { name: '真实入住率', color: 'var(--s1)', values: days.map(d => d.trueOcc * 100) },
+  { name: '反推入住率（20:00）', color: 'var(--s2)', values: days.map(d => d.inferredOcc * 100) },
+];
+const priceSeries = [
+  { name: '携程日均价', color: 'var(--s3)', values: days.map(d => d.otaAvg.ctrip) },
+  { name: '美团日均价', color: 'var(--s4)', values: days.map(d => d.otaAvg.meituan) },
+];
+function holidayBands() {
+  const runs = [];
+  days.forEach((d, i) => {
+    if (d.type === 'holiday') {
+      const last = runs[runs.length - 1];
+      if (last && last.to === i - 1) last.to = i;
+      else runs.push({ from: i, to: i, name: d.typeLabel });
+    }
+  });
+  return runs;
+}
+function priceTicks() {
+  const all = priceSeries.flatMap(s => s.values);
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const candidates = [25, 50, 100, 200, 250, 500, 1000];
+  const step = candidates.find(st => (hi - lo) / st <= 6) || 2000;
+  const ticks = [];
+  for (let v = Math.floor(lo / step) * step; v <= Math.ceil(hi / step) * step; v += step) ticks.push(v);
+  return { ticks, range: [ticks[0], ticks[ticks.length - 1]] };
+}
+
+// ---------- 渲染 ----------
+buildLegend(document.getElementById('legendOcc'), occSeries);
+buildLegend(document.getElementById('legendPrice'), priceSeries);
+
+buildChart(document.getElementById('boxOcc'), {
+  series: occSeries,
+  labels: days.map(d => d.label),
+  range: [0, 100],
+  yTicks: [0, 25, 50, 75, 100],
+  yFmt: v => v + '%',
+  vFmt: (s, v) => v.toFixed(1) + '%',
+  bands: holidayBands(),
+});
+
+const pticks = priceTicks();
+buildChart(document.getElementById('boxPrice'), {
+  series: priceSeries,
+  labels: days.map(d => d.label),
+  range: pticks.range,
+  yTicks: pticks.ticks,
+  yFmt: v => money(v),
+  vFmt: (s, v) => money(Math.round(v)),
+  bands: holidayBands(),
+});
+
+// ---------- 明细表 ----------
+const COLUMNS = [
+  ['日期', 'left'],
+  ['类型', 'left'],
+  ['携程剩 00:00', 'right'], ['携程剩 08:00', 'right'], ['携程剩 14:00', 'right'], ['携程剩 20:00', 'right'],
+  ['美团剩 20:00', 'right'],
+  ['反推入住率', 'right'], ['真实入住率', 'right'], ['误差(pp)', 'right'],
+  ['携程价 20:00', 'right'], ['美团价 20:00', 'right'],
+];
+const tbl = document.querySelector('table');
+const thead = tbl.querySelector('thead');
+const tbody = tbl.querySelector('tbody');
+const tr = document.createElement('tr');
+for (const [name] of COLUMNS) {
+  const th = document.createElement('th');
+  th.textContent = name;
+  tr.appendChild(th);
+}
+thead.appendChild(tr);
+for (const d of days) {
+  const row = document.createElement('tr');
+  const s20 = d.snapshots[3];
+  const cells = [
+    d.date, d.typeLabel,
+    d.snapshots[0].ctrip.rem, d.snapshots[1].ctrip.rem, d.snapshots[2].ctrip.rem, s20.ctrip.rem,
+    s20.meituan.rem,
+    (d.inferredOcc * 100).toFixed(1) + '%', (d.trueOcc * 100).toFixed(1) + '%',
+    (d.trueOcc - d.inferredOcc >= 0 ? '+' : '') + ((d.trueOcc - d.inferredOcc) * 100).toFixed(1),
+    money(s20.ctrip.price), money(s20.meituan.price),
+  ];
+  cells.forEach((v, i) => {
+    const td = document.createElement('td');
+    td.textContent = v;
+    td.style.textAlign = COLUMNS[i][1];
+    row.appendChild(td);
+  });
+  tbody.appendChild(row);
+}
+
+// ---------- 说明 ----------
+const NOTES = [
+  '反推公式：入住率 ≈（总房量 − 20:00 剩余房量）÷ 总房量。例：60 间房晚 8 点显示只剩 5 间 → 约 91.7%。',
+  '20:00 之后仍有少量临时到店（模型按当日预订量约 5%），因此反推入住率系统性略低于真实入住率，差距见明细表"误差"列。',
+  '剩余房量为模拟的 OTA 展示值，含 ±1 间的平台同步抖动；反推时取携程、美团两平台展示值的平均以平滑抖动。',
+  '价格模型：基准价 × 日期系数（工作日 1.00 / 周末 1.18 / 节假日 1.60）× 稀缺加价（1 + 0.45 × 已售占比）× 平台系数（美团 0.97）× ±2% 噪声。',
+  '节假日按内置 2026 年中国节假日表（简化）判定；本报告为方法论演示的模拟数据，非真实 OTA 数据。',
+];
+const notes = document.getElementById('notes');
+for (const t of NOTES) {
+  const li = document.createElement('li');
+  li.textContent = t;
+  notes.appendChild(li);
+}
+
+// ---------- 主题切换 ----------
+const btn = document.getElementById('themeBtn');
+const mq = matchMedia('(prefers-color-scheme: dark)');
+function currentTheme() {
+  return document.documentElement.dataset.theme || (mq.matches ? 'dark' : 'light');
+}
+function syncBtn() {
+  btn.textContent = currentTheme() === 'dark' ? '浅色模式' : '深色模式';
+}
+btn.addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('viz-theme', next); } catch (e) {}
+  syncBtn();
+});
+try {
+  const saved = localStorage.getItem('viz-theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+} catch (e) {}
+syncBtn();
+</script>
+</body>
+</html>
